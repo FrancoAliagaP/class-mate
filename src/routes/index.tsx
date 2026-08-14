@@ -53,17 +53,12 @@ function Index() {
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="secondary">
-              <Link to="/auth">Ingresar al sistema</Link>
-            </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-            >
-              <Link to="/auth">Crear cuenta de evaluador</Link>
+              <Link to="/panel">Entrar al panel</Link>
             </Button>
           </div>
+          <p className="mt-4 text-xs text-primary-foreground/70">
+            Modo de prueba: sin correo ni contraseña, los datos se guardan en este navegador.
+          </p>
         </div>
       </section>
 
