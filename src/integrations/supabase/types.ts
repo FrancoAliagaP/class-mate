@@ -14,13 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      grades: {
+        Row: {
+          created_at: string
+          id: string
+          score: number
+          student_id: string
+          title: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          score: number
+          student_id: string
+          title?: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          score?: number
+          student_id?: string
+          title?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grades_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          subject_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          subject_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subjects: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          teacher_id: string
+        }
+        Insert: {
+          code?: string
+          created_at?: string
+          id?: string
+          name: string
+          teacher_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          teacher_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      owns_student: { Args: { _student_id: string }; Returns: boolean }
+      owns_subject: { Args: { _subject_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
