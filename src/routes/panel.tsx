@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,15 +11,16 @@ import {
   totalWeight,
   type Grade,
 } from "@/lib/grades";
+import { useDemoData, uid, type Student, type Subject } from "@/lib/local-store";
 
-export const Route = createFileRoute("/_authenticated/panel")({
+export const Route = createFileRoute("/panel")({
   head: () => ({
     meta: [
       { title: "Panel de notas | Registro Académico" },
       {
         name: "description",
         content:
-          "Administra ramos, alumnos, evaluaciones con porcentaje y promedios finales de 1 a 7.",
+          "Administra ramos, alumnos, evaluaciones con porcentaje y promedios finales de 1 a 7 desde el navegador.",
       },
       { property: "og:title", content: "Panel de notas | Registro Académico" },
       {
@@ -33,152 +32,27 @@ export const Route = createFileRoute("/_authenticated/panel")({
   component: Panel,
 });
 
-type Subject = { id: string; name: string; code: string };
-type Student = { id: string; full_name: string; subject_id: string };
-
 function Panel() {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [evaluator, setEvaluator] = useState<{ name: string; email: string }>({
-    name: "",
-    email: "",
-  });
+  const { data, ready, update } = useDemoData();
   const [subjectId, setSubjectId] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", user.id)
-        .maybeSingle();
-      setEvaluator({
-        name:
-          profile?.full_name ||
-          (user.user_metadata as { full_name?: string })?.full_name ||
-          user.email?.split("@")[0] ||
-          "Evaluador",
-        email: profile?.email || user.email || "",
-      });
-    })();
-  }, []);
+  const activeSubject =
+    data.subjects.find((s) => s.id === subjectId)?.id ?? data.subjects[0]?.id ?? null;
 
-  const subjectsQ = useQuery({
-    queryKey: ["subjects"],
-    queryFn: async (): Promise<Subject[]> => {
-      const { data, error } = await supabase
-        .from("subjects")
-        .select("id, name, code")
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  useEffect(() => {
-    if (!subjectId && subjectsQ.data && subjectsQ.data.length > 0) {
-      setSubjectId(subjectsQ.data[0]!.id);
-    }
-  }, [subjectsQ.data, subjectId]);
-
-  const studentsQ = useQuery({
-    queryKey: ["students", subjectId],
-    enabled: !!subjectId,
-    queryFn: async (): Promise<Student[]> => {
-      const { data, error } = await supabase
-        .from("students")
-        .select("id, full_name, subject_id")
-        .eq("subject_id", subjectId!);
-      if (error) throw error;
-      return (data ?? []).slice().sort(byName);
-    },
-  });
-
-  const studentIds = useMemo(
-    () => (studentsQ.data ?? []).map((s) => s.id),
-    [studentsQ.data],
+  const students = useMemo(
+    () => data.students.filter((s) => s.subject_id === activeSubject).slice().sort(byName),
+    [data.students, activeSubject],
   );
-
-  const gradesQ = useQuery({
-    queryKey: ["grades", subjectId, studentIds.join(",")],
-    enabled: studentIds.length > 0,
-    queryFn: async (): Promise<Grade[]> => {
-      const { data, error } = await supabase
-        .from("grades")
-        .select("id, student_id, title, score, weight")
-        .in("student_id", studentIds)
-        .order("created_at");
-      if (error) throw error;
-      return (data ?? []).map((g) => ({
-        ...g,
-        score: Number(g.score),
-        weight: Number(g.weight),
-      }));
-    },
-  });
 
   const gradesByStudent = useMemo(() => {
     const map = new Map<string, Grade[]>();
-    for (const g of gradesQ.data ?? []) {
+    for (const g of data.grades) {
       map.set(g.student_id, [...(map.get(g.student_id) ?? []), g]);
     }
     return map;
-  }, [gradesQ.data]);
+  }, [data.grades]);
 
-  const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ["students"] });
-    void qc.invalidateQueries({ queryKey: ["grades"] });
-  };
-
-  const addSubject = useMutation({
-    mutationFn: async (input: { name: string; code: string }) => {
-      const { data: userData } = await supabase.auth.getUser();
-      const { error } = await supabase.from("subjects").insert({
-        name: input.name,
-        code: input.code,
-        teacher_id: userData.user!.id,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["subjects"] }),
-  });
-
-  const addStudent = useMutation({
-    mutationFn: async (fullName: string) => {
-      const { error } = await supabase
-        .from("students")
-        .insert({ full_name: fullName, subject_id: subjectId! });
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-  });
-
-  const addGrade = useMutation({
-    mutationFn: async (input: { title: string; score: number; weight: number }) => {
-      const { error } = await supabase.from("grades").insert({
-        student_id: selectedStudent!,
-        title: input.title,
-        score: input.score,
-        weight: input.weight,
-      });
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-  });
-
-  const removeGrade = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("grades").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-  });
-
-  const students = studentsQ.data ?? [];
   const current = students.find((s) => s.id === selectedStudent) ?? null;
   const currentGrades = current ? (gradesByStudent.get(current.id) ?? []) : [];
 
@@ -191,10 +65,18 @@ function Panel() {
       : null;
   const approvedCount = courseAverages.filter((v) => v >= 4).length;
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    qc.clear();
-    navigate({ to: "/auth" });
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Cargando…
+      </div>
+    );
+  }
+
+  if (!data.evaluator) {
+    return (
+      <EvaluatorGate onSet={(name) => update((d) => ({ ...d, evaluator: name }))} />
+    );
   }
 
   return (
@@ -209,11 +91,17 @@ function Panel() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-semibold">{evaluator.name}</p>
-              <p className="text-xs text-primary-foreground/70">{evaluator.email}</p>
+              <p className="text-sm font-semibold">{data.evaluator}</p>
+              <p className="text-xs text-primary-foreground/70">
+                Datos guardados en este navegador
+              </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={signOut}>
-              Salir
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => update((d) => ({ ...d, evaluator: "" }))}
+            >
+              Cambiar evaluador
             </Button>
           </div>
         </div>
@@ -221,13 +109,17 @@ function Panel() {
 
       <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[240px_1fr_320px]">
         <SubjectsColumn
-          subjects={subjectsQ.data ?? []}
-          subjectId={subjectId}
+          subjects={data.subjects}
+          subjectId={activeSubject}
           onSelect={(id) => {
             setSubjectId(id);
             setSelectedStudent(null);
           }}
-          onCreate={(name, code) => addSubject.mutate({ name, code })}
+          onCreate={(name, code) => {
+            const s: Subject = { id: uid(), name, code };
+            update((d) => ({ ...d, subjects: [...d.subjects, s] }));
+            setSubjectId(s.id);
+          }}
         />
 
         <section className="rounded-lg border border-border bg-card shadow-panel">
@@ -236,13 +128,18 @@ function Panel() {
             <span className="text-xs text-muted-foreground">Orden alfabético</span>
           </div>
 
-          {!subjectId ? (
+          {!activeSubject ? (
             <p className="p-6 text-sm text-muted-foreground">
               Crea un ramo para comenzar a registrar alumnos y notas.
             </p>
           ) : (
             <>
-              <AddStudentForm onAdd={(n) => addStudent.mutate(n)} />
+              <AddStudentForm
+                onAdd={(full_name) => {
+                  const st: Student = { id: uid(), full_name, subject_id: activeSubject };
+                  update((d) => ({ ...d, students: [...d.students, st] }));
+                }}
+              />
               <div className="max-h-[60vh] overflow-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-secondary text-left">
@@ -365,14 +262,70 @@ function Panel() {
               <StudentPanel
                 name={current.full_name}
                 grades={currentGrades}
-                onAdd={(v) => addGrade.mutate(v)}
-                onRemove={(id) => removeGrade.mutate(id)}
+                onAdd={(v) =>
+                  update((d) => ({
+                    ...d,
+                    grades: [
+                      ...d.grades,
+                      {
+                        id: uid(),
+                        student_id: current.id,
+                        subject_id: activeSubject!,
+                        title: v.title,
+                        score: v.score,
+                        weight: v.weight,
+                      },
+                    ],
+                  }))
+                }
+                onRemove={(id) =>
+                  update((d) => ({ ...d, grades: d.grades.filter((g) => g.id !== id) }))
+                }
               />
             )}
           </div>
         </aside>
       </div>
     </div>
+  );
+}
+
+function EvaluatorGate({ onSet }: { onSet: (name: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-secondary px-6">
+      <form
+        className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-panel"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const v = name.trim();
+          if (v) onSet(v.slice(0, 60));
+        }}
+      >
+        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+          Registro Académico
+        </p>
+        <h1 className="mt-2 text-2xl font-bold">¿Quién evalúa?</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Escribe tu nombre para identificar tus registros. Todo queda guardado en este
+          navegador, sin correo ni contraseña.
+        </p>
+        <Label htmlFor="evaluator" className="mt-5 block text-xs">
+          Nombre del evaluador
+        </Label>
+        <Input
+          id="evaluator"
+          className="mt-1"
+          value={name}
+          maxLength={60}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Prof. Ana Pérez"
+        />
+        <Button type="submit" className="mt-4 w-full">
+          Entrar al panel
+        </Button>
+      </form>
+    </main>
   );
 }
 
@@ -404,9 +357,7 @@ function SubjectsColumn({
               }`}
             >
               <span className="block font-medium">{s.name}</span>
-              {s.code && (
-                <span className="block text-xs opacity-70">{s.code}</span>
-              )}
+              {s.code && <span className="block text-xs opacity-70">{s.code}</span>}
             </button>
           </li>
         ))}
@@ -580,7 +531,7 @@ function StudentPanel({
           <Input
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
-            placeholder="% "
+            placeholder="%"
             inputMode="decimal"
           />
         </div>
