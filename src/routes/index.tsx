@@ -61,9 +61,7 @@ function Index() {
               variant="outline"
               className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
             >
-              <Link to="/auth" search={{ modo: "registro" }}>
-                Crear cuenta de evaluador
-              </Link>
+              <Link to="/auth">Crear cuenta de evaluador</Link>
             </Button>
           </div>
         </div>
